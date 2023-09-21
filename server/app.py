@@ -1,70 +1,74 @@
-#!/usr/bin/env python3
-
-from flask import Flask, request, make_response, jsonify
-from flask_migrate import Migrate
-
+# Import necessary libraries and models
+from flask import Flask, jsonify, request, make_response
+from flask_sqlalchemy import SQLAlchemy
 from models import db, Bakery, BakedGood
 
 app = Flask(__name__)
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///app.db'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-app.json.compact = False
-
-migrate = Migrate(app, db)
+app.config['JSONIFY_PRETTYPRINT_REGULAR'] = True
 
 db.init_app(app)
 
-@app.route('/')
-def home():
-    return '<h1>Bakery GET-POST-PATCH-DELETE API</h1>'
+# Route to create a new baked good via POST request
+@app.route('/baked_goods', methods=['POST'])
+def create_baked_good():
+    data = request.form  # Get form data from the request
 
-@app.route('/bakeries')
-def bakeries():
+    # Extract relevant data for creating a new baked good
+    name = data.get("name")
+    price = data.get("price")
+    bakery_id = data.get("bakery_id")
 
-    bakeries = Bakery.query.all()
-    bakeries_serialized = [bakery.to_dict() for bakery in bakeries]
+    # Create a new baked good object
+    new_baked_good = BakedGood(name=name, price=price, bakery_id=bakery_id)
 
-    response = make_response(
-        bakeries_serialized,
-        200
-    )
-    return response
+    # Add the new baked good to the database
+    db.session.add(new_baked_good)
+    db.session.commit()
 
-@app.route('/bakeries/<int:id>')
-def bakery_by_id(id):
+    # Return the newly created baked good as JSON with a 201 status code (Created)
+    response_data = new_baked_good.to_dict()
+    return jsonify(response_data), 201
 
-    bakery = Bakery.query.filter_by(id=id).first()
-    bakery_serialized = bakery.to_dict()
+# Route to update an existing bakery's name via PATCH request
+@app.route('/bakeries/<int:id>', methods=['PATCH'])
+def update_bakery_name(id):
+    bakery = Bakery.query.get(id)  # Find the bakery by its ID
 
-    response = make_response(
-        bakery_serialized,
-        200
-    )
-    return response
+    if not bakery:
+        # Return a 404 response if the bakery doesn't exist
+        return jsonify({"error": "Bakery not found"}), 404
 
-@app.route('/baked_goods/by_price')
-def baked_goods_by_price():
-    baked_goods_by_price = BakedGood.query.order_by(BakedGood.price).all()
-    baked_goods_by_price_serialized = [
-        bg.to_dict() for bg in baked_goods_by_price
-    ]
-    
-    response = make_response(
-        baked_goods_by_price_serialized,
-        200
-    )
-    return response
+    data = request.form  # Get form data from the request
 
-@app.route('/baked_goods/most_expensive')
-def most_expensive_baked_good():
-    most_expensive = BakedGood.query.order_by(BakedGood.price.desc()).limit(1).first()
-    most_expensive_serialized = most_expensive.to_dict()
+    # Update the bakery's name based on the data in the request
+    if "name" in data:
+        bakery.name = data["name"]
 
-    response = make_response(
-        most_expensive_serialized,
-        200
-    )
-    return response
+    # Commit the changes to the database
+    db.session.commit()
+
+    # Return the updated bakery as JSON with a 200 status code (OK)
+    response_data = bakery.to_dict()
+    return jsonify(response_data), 200
+
+# Route to delete an existing baked good via DELETE request
+@app.route('/baked_goods/<int:id>', methods=['DELETE'])
+def delete_baked_good(id):
+    baked_good = BakedGood.query.get(id)  # Find the baked good by its ID
+
+    if not baked_good:
+        # Return a 404 response if the baked good doesn't exist
+        return jsonify({"error": "Baked good not found"}), 404
+
+    # Delete the baked good from the database
+    db.session.delete(baked_good)
+    db.session.commit()
+
+    # Return a success message as JSON with a 200 status code (OK)
+    response_data = {"message": "Baked good deleted successfully"}
+    return jsonify(response_data), 200
 
 if __name__ == '__main__':
-    app.run(port=5555, debug=True)
+    app.run(port=5555)
